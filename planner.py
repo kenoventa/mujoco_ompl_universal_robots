@@ -12,10 +12,11 @@ HOME_JOINT_POSITIONS = [42.31, -109.92, 71.49, -51.47, -89.67, -47.7] # degrees
 HOME_JOINT_POSITIONS = np.deg2rad(HOME_JOINT_POSITIONS) # radians
 TEST_POSITIONS = [60.35, -95.93, 95.34, -89.31, -89.57, -29.40] # degrees
 TEST_POSITIONS = np.deg2rad(TEST_POSITIONS) # radians
+
 class MotionPlanner:
     def __init__(self):
         print("Initializing Motion Planner...")
-        self.sim_to_robot = False  # Set to True to control robot from GUI
+        self.sim_to_robot = True  # Set to True to control robot from GUI
 
         # Initialize MuJoCo
         self.model = mujoco.MjModel.from_xml_path("/app/scene.xml")
@@ -142,44 +143,42 @@ class MotionPlanner:
                 print("Interrupted while moving to home position")
 
     def move_robot_joint(self, simulate_only=False):
-        print("adasasasdasdads")
+        print("Prepare to move robot joint")
         """Move to home position with motion planning"""
+        mujoco.glfw.glfw.init()  # Initialize GLFW
+        # mujoco.mjv.makeScene(self.model, maxgeom=1000)  # Ensure scene capacity
+
         with viewer.launch_passive(self.model, self.data) as v:
+            print(f"Scene geometry capacity: {v.user_scn.maxgeom}")  # Should be >100
+            time.sleep(2)
             try:
                 print("Planning motion...")
                 current_q = self.rtde_receive.getActualQ()
                 
                 # Plan motion from current position to home
-                path = self.plan_motion(current_q, TEST_POSITIONS)
-                # path = self.plan_motion(current_q, HOME_JOINT_POSITIONS)
-                print(f"Planned path: {path}")
-                print("faasdasdasdsadsd")
-                
+                # path = self.plan_motion(current_q, TEST_POSITIONS)
+                path = self.plan_motion(current_q, HOME_JOINT_POSITIONS)
+                print(f"Planned path: {path[1]}")
+ 
                 if path:
                     print(f"Visualizing planned path with {len(path)} waypoints")
-                    original_qpos = self.data.qpos.copy()
-                    end_effector_positions = []
+                    # Store path as instance variable for the callback
+                    # Pre-compute Cartesian waypoints once
+                    cartesian_waypoints = []
+                    for wp in path:
+                        self.data.qpos[:6] = wp
+                        mujoco.mj_forward(self.model, self.data)
+                        cartesian_waypoints.append(self.data.site_xpos[0].copy())
 
+                    print('cartesian, ', cartesian_waypoints[1])    
+                    print(f"Computed {len(cartesian_waypoints)} Cartesian waypoints")
 
-                    # Visualize the path in MuJoCo
-                    # for waypoint in path:
-                    #     # Set the joint positions to the waypoint
-                    #     self.data.qpos[:6] = waypoint
-                        
-                    #     # Forward kinematics to update positions
-                    #     mujoco.mj_forward(self.model, self.data)
-                        
-                    #     # Get the end effector position (modify the index as needed)
-                    #     ee_idx = 6  # This is often the last body, adjust if needed
-                    #     ee_pos = self.data.xpos[ee_idx].copy()
-                        
-                    #     end_effector_positions.append(ee_pos)
+                    # Store for the callback
+                    self.visualization_waypoints = cartesian_waypoints
+
+                    # Register the callback
+                    v.user_scene_callback = lambda scn: self.modify_scene(self)
                     
-                    # # Restore original state
-                    # self.data.qpos[:] = original_qpos
-                    # mujoco.mj_forward(self.model, self.data)
-                    
- 
                     if simulate_only:
                         print(f"Simulating planned path with {len(path)} waypoints")
                         for waypoint in path:
@@ -205,6 +204,7 @@ class MotionPlanner:
                             actual_q = self.rtde_receive.getActualQ()
                             self.data.qpos[:6] = actual_q
                             mujoco.mj_step(self.model, self.data)
+
                             v.sync()
                             
                             time.sleep(self.time_step)
@@ -236,51 +236,30 @@ class MotionPlanner:
                 self.rtde_control.disconnect()
                 print("Interrupted while moving to home position")
 
-    def add_marker(self, position, size=0.02, color=(1, 0, 0, 1)):
-        """
-        Add a marker to the MuJoCo simulation.
-        
-        Args:
-            position (list or tuple): The (x, y, z) position of the marker.
-            size (float): The size of the marker (default is 0.02).
-            color (tuple): The RGBA color of the marker (default is red).
-        """
-        # marker = mujoco.MjvGeom()
-        # marker.type = mujoco.mjtGeom.mjGEOM_SPHERE  # Sphere marker
-        # marker.size = [size, size, size]  # Marker size
-        # marker.rgba = color  # Marker color
-        # marker.pos = position  # Marker position
-        # Create a scene if it doesn't exist
-        # if not hasattr(self, "scene"):
-        #     self.scene = mujoco.MjvScene(self.model, maxgeom=1000)
-
-        # # Create a camera if it doesn't exist
-        # if not hasattr(self, "camera"):
-        #     self.camera = mujoco.MjvCamera()
-
-        # # Update the scene with the marker
-        # mujoco.mjv_updateScene(
-        #     self.model,
-        #     self.data,
-        #     mujoco.MjvOption(),
-        #     None,  # No perturbation
-        #     self.camera,  # Camera object
-        #     mujoco.mjtCatBit.mjCAT_ALL,
-        #     self.scene,
-        # )
-
-        # # Add the marker to the scene's geoms
-        # self.scene.add_marker(marker)
-        if not hasattr(self, 'markers'):
-            self.markers = []
-        
-        # Store the marker information
-        self.markers.append({
-            'pos': position,
-            'size': [size, size, size],
-            'rgba': color,
-            'type': mujoco.mjtGeom.mjGEOM_SPHERE
-        })
+    def modify_scene(self):
+        def scene_callback(scn):
+            print("executing callback")
+            """Scene modification callback"""
+            geom = mujoco.MjvGeom()
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([0.1, 0, 0]),  # radius = 1 cm
+                np.array([0, 0, 0.1]),   # visible above ground
+                np.eye(3).flatten(),
+                np.array([1, 0, 0, 1])   # red
+            )
+            if scn.ngeom < scn.geoms.shape[0]:
+                scn.geoms[scn.ngeom] = geom
+                scn.ngeom += 1
+        return scene_callback
+        # if hasattr(self, 'visualization_waypoints'):
+        #     # Clear previous visualizations
+        #     scn.ngeom = 0
+        #     print('aasdasdasdas  ', self.visualization_waypoints[1])
+        #     # Visualize waypoints and connections
+        #     self.visualize_waypoints(scn, self.model, self.data, 
+        #                         self.visualization_waypoints)
 
     # Launch viewer with modern API
     def main(self):
@@ -321,13 +300,70 @@ class MotionPlanner:
                 self.rtde_control.servoStop()
                 self.rtde_control.disconnect()
 
+    def visualize_waypoints(self, scn, model, data, waypoints):
+        """Visualize waypoints as spheres and connecting lines."""
+        # Visualize waypoints (spheres)
+        for i, waypoint in enumerate(waypoints):
+            # Create sphere geometry
+            geom = mujoco.MjvGeom()
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([0.01, 0, 0]),  # Size (radius for sphere)
+                waypoint,                # Position (already Cartesian)
+                np.array([1, 0, 0, 0, 1, 0, 0, 0, 1]),             # Rotation matrix (identity)
+                np.array([0,1,0,1]) if i == 0 else  # Start = green
+                np.array([1,0,0,1]) if i == len(waypoints)-1 else  # Goal = red
+                np.array([1,1,0,1])      # Intermediate = yellow
+            )
+            
+            # Add to scene if there's space
+            if scn.ngeom < scn.geoms.shape[0]:
+                scn.geoms[scn.ngeom] = geom
+                scn.ngeom += 1
 
-    
+        # Add connecting lines between waypoints
+
+        for i in range(len(waypoints)-1):
+        # for i, waypoint in enumerate(waypoints):    
+            start_pos = np.array(waypoints[i], dtype=np.float64)
+            end_pos = np.array(waypoints[i+1], dtype=np.float64)
+            from_array = np.array([[start_pos[0]], [start_pos[1]], [start_pos[2]]], dtype=np.float64)
+            to_array = np.array([[end_pos[0]], [end_pos[1]], [end_pos[2]]], dtype=np.float64)
+            print('wp1, ', waypoints[1])
+            
+            # Create line geometry (capsule/cylinder)
+            geom = mujoco.MjvGeom()
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_CAPSULE,
+                np.zeros(3),             # Size (will be set by connector)
+                np.zeros(3),             # Position (will be set by connector)
+                np.array([1, 0, 0, 0, 1, 0, 0, 0, 1]),             # Rotation matrix
+                np.array([0.7, 0.7, 0.7, 0.8])  # Gray with transparency
+            )
+            
+            print ('start_pos, ', start_pos)
+            print ('end_pos, ', end_pos)
+            # Make it a connector between points
+            mujoco.mjv_connector(
+                geom,
+                mujoco.mjtGeom.mjGEOM_CAPSULE,
+                100.0,                   # Width of the line
+                from_array,
+                to_array
+            )
+            # Add to scene if there's space
+            if scn.ngeom < scn.geoms.shape[0]:
+                scn.geoms[scn.ngeom] = geom
+                scn.ngeom += 1
+
 
 if __name__ == "__main__":
     # main()
     motion_planner = MotionPlanner()
     # motion_planner.move_to_home()
     motion_planner.move_robot_joint()
+    # motion_planner.main()
     sys.stdout.flush()
     # rtde_control.disconnect()

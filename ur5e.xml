@@ -37,6 +37,7 @@
     <material class="ur5e" name="linkgray" rgba="0.82 0.82 0.82 1"/>
     <material class="ur5e" name="urblue" rgba="0.49 0.678 0.8 1"/>
 
+    <mesh name="gripper_mesh" file="cam_holder_with_onrobot_single.stl"/>
     <mesh file="base_0.obj"/>
     <mesh file="base_1.obj"/>
     <mesh file="shoulder_0.obj"/>
@@ -112,6 +113,10 @@
                   <geom material="linkgray" mesh="wrist3" class="visual"/>
                   <geom class="eef_collision" pos="0 0.08 0" quat="1 1 0 0" size="0.04 0.02"/>
                   <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
+                  <body name="gripper" pos="0 0.1 0" quat="0.7071 -0.7071 0 0">
+                    <geom type="mesh" mesh="gripper_mesh" rgba="0.3 0.3 0.3 1" />
+                    <!-- <site name="tcp" pos="0 0 0.220" size="5" rgba="1 0 0 1"/> -->
+                  </body>
                 </body>
               </body>
             </body>
@@ -119,6 +124,9 @@
         </body>
       </body>
     </body>
+    <!-- <body name="table" pos="0 0 0.375">
+      <geom type="box" size="0.5 0.25 0.375" rgba="0.5 0.5 0.5 1"/>
+    </body> -->
   </worldbody>
 
   <actuator>
