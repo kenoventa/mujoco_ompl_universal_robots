@@ -2,7 +2,16 @@
 
 This repository contains code for motion planning using [OMPL](https://ompl.kavrakilab.org/) (Open Motion Planning Library) with Universal Robots, simulated in [MuJoCo](https://mujoco.org/).
 
-The script also can control the joint of the robot from MuJoCo's GUI
+## Overview
+
+The code integrates motion planning with the **OMPL** planner and **MuJoCo** simulation, allowing real-time control of the **Universal Robots** (UR) through the **MuJoCo GUI**. 
+
+The `main()` function allows for direct control, where you move the real robot from MuJoCo.
+
+`move_robot_joint()` function allows robot to move to certain position using **OMPL** planner
+
+- **MuJoCo** is used to simulate the robot's movements and environment.
+- **RTDE** is used to send real-time commands to the actual robot, enabling joint control.
 
 ![Gripper Demo](assets/robot.gif)
 
