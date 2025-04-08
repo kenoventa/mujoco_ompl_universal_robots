@@ -5,7 +5,7 @@ services:
     working_dir: /app
     build: ./motion_planner
     volumes:
-      - ./motion_planner:/app                    # Mount entire folder
+      - .:/app                    # Mount entire folder
       - /tmp/.X11-unix:/tmp/.X11-unix
     command : python3 /app/planner.py
     environment:
