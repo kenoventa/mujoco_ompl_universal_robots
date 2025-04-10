@@ -36,7 +36,12 @@ cd mujoco_ompl_universal_robots
 docker build -t motion_planner .
 ```
 
-### 3. Run with docker
+### 3. Allow Docker Container to display GUI
+```bash
+xhost +local:docker
+```
+
+### 4. Run with docker
 
 ```bash
 docker compose up motion_planner 
