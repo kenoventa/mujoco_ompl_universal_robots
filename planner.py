@@ -19,20 +19,20 @@ TEST_POSITIONS_2 = np.deg2rad(TEST_POSITIONS_2) # radians
 class MotionPlanner:
     def __init__(self):
         print("Initializing Motion Planner...")
-        self.sim_to_robot = True  # Set to True to control robot from GUI, false for simulation
+        self.robot_control = False  # Set to True to control robot from GUI, false for simulation
 
         # Initialize MuJoCo
         self.model = mujoco.MjModel.from_xml_path("/app/scene.xml")
         self.data = mujoco.MjData(self.model)
 
-        if self.sim_to_robot:
+        if self.robot_control:
             # Connect to UR5e
             self.rtde_control = RTDEControlInterface("192.168.20.35")
             self.rtde_receive = RTDEReceiveInterface("192.168.20.35")
 
             self.initial_q = self.rtde_receive.getActualQ() # initial joint positions
         
-        if not self.sim_to_robot:
+        if not self.robot_control:
             self.initial_q = HOME_JOINT_POSITIONS
 
         self.data.qpos[:6] = self.initial_q
@@ -40,7 +40,7 @@ class MotionPlanner:
         self.previous_ctrl = np.zeros(self.model.nu)
         self.velocity = 0.01
         self.acceleration = 0.01
-        self.time_step = 0.008  # 125Hz
+        self.time_step = 0.2  # time for each step
         self.lookahead_time = 0.1  # seconds
         self.gain = 300  # Gain for servo control
 
@@ -90,7 +90,7 @@ class MotionPlanner:
         self.ss.setStateValidityChecker(ob.StateValidityCheckerFn(is_state_valid))
         
         # Set planner
-        planner = og.RRTConnect(self.ss.getSpaceInformation())
+        planner = og.RRT(self.ss.getSpaceInformation())
         self.ss.setPlanner(planner)
 
     def plan_motion(self, start, goal, planning_time=1.0):
@@ -150,7 +150,7 @@ class MotionPlanner:
                 self.rtde_control.disconnect()
                 print("Interrupted while moving to home position")
 
-    def move_robot_joint(self, simulate_only=False):
+    def move_robot_joint(self, simulate_only=True):
         print("Prepare to move robot joint")
         """Move to home position with motion planning"""
         # mujoco.mjv.makeScene(self.model, maxgeom=1000)  # Ensure scene capacity
@@ -193,7 +193,7 @@ class MotionPlanner:
                         for waypoint in path:
                             self.data.qpos[:6] = waypoint
 
-                            actual_q = self.data.qpos[:6].copy()
+                            # actual_q = self.data.qpos[:6].copy()
 
                             mujoco.mj_step(self.model, self.data)
                             v.sync()
@@ -241,8 +241,8 @@ class MotionPlanner:
                         actual_q = self.rtde_receive.getActualQ()
                         self.data.qpos[:6] = actual_q
                     else:
-                        actual_q = self.data.qpos[:6].copy()
-                        # self.data.qpos[:6] = actual_q
+                        self.data.qpos[:6] = path[-1]
+
                     mujoco.mj_step(self.model, self.data)
                     v.sync()
                     time.sleep(self.time_step)
@@ -277,7 +277,7 @@ class MotionPlanner:
             try:
                 while True:
                     # print("Initial joint positions:", initial_q)
-                    if self.sim_to_robot:
+                    if self.robot_control:
                         if not np.array_equal(self.data.ctrl, self.previous_ctrl):
                             # Control values changed - prepare to send to robot
                             print("Control panel change detected!")
